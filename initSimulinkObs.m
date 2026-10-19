@@ -56,7 +56,7 @@ control.kiSpeed = -kMeca(2) * motor.J;
 scenario = struct;
 scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
-scenario.useTrajectory = 0;             % 1 : trajectoire optimale, 0 : courant constant
+scenario.useTrajectory = 1;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
 scenario.SpeedModulate = 0;             % 1: modulation pour estimation de R
 scenario.omegaRef      = 500 * pi / 30; % rad/s - 500 tr/min
@@ -94,8 +94,9 @@ math.J = [0 -1; 1 0];                   % rotation de pi/2
 %% Observateur de flux (nouveau)
 observer_new.R = observer.R;
 observer_new.harmonics = (-21:2:21);% [-7, -3, -1, 1, 5];
-observer_new.gamma = find_optimal_gamma(observer_new.harmonics);
+[observer_new.gamma, rho_theory] = find_optimal_gamma(observer_new.harmonics);
 observer_new.gamma_R = 1; % 3
+fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
@@ -105,8 +106,8 @@ toc
 
 %% tracé
 
-% fig = plotObs(out.logsout, "lambdadqHat");
-% fig.set('Name', 'Observer (Pauline)')
+fig = plotObs(out.logsout, "lambdadqHat");
+fig.set('Name', 'Observer (Pauline)')
     
 fig = plotObs(out.logsout, "lambdadq_hat");
 fig.set('Name', 'Observer (new)')
@@ -132,4 +133,4 @@ lambdadq_hat = out.logsout.getElement("lambdadq_hat").Values.Data;
 theta_e = motor.p * out.logsout.getElement("theta").Values.Data;
 
 [rho_sim, diag] = estimate_decay_rate_from_sim(lambdadq, lambdadq_hat, theta_e);
-fprintf('Taux de covergence identifie en simulation : %.4f rad^-1\n', rho_sim);
+fprintf('Taux de convergence identifie en simulation : %.4f rad^-1\n', rho_sim);
