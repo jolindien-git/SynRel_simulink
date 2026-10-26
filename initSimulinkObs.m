@@ -95,7 +95,7 @@ math.J = [0 -1; 1 0];                   % rotation de pi/2
 observer_new.R = observer.R;
 observer_new.harmonics = (-21:2:21);% [-7, -3, -1, 1, 5];
 [observer_new.gamma, rho_theory] = find_optimal_gamma(observer_new.harmonics);
-observer_new.gamma_R = 1; % 3
+observer_new.gamma_R = 2.5e-5; % 3
 fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
@@ -131,6 +131,9 @@ end
 lambdadq = out.logsout.getElement("lambdadq").Values.Data;
 lambdadq_hat = out.logsout.getElement("lambdadq_hat").Values.Data;
 theta_e = motor.p * out.logsout.getElement("theta").Values.Data;
-
-[rho_sim, diag] = estimate_decay_rate_from_sim(lambdadq, lambdadq_hat, theta_e);
-fprintf('Taux de convergence identifie en simulation : %.4f rad^-1\n', rho_sim);
+try
+    [rho_sim, diag] = estimate_decay_rate_from_sim(lambdadq, lambdadq_hat, theta_e);
+    fprintf('Taux de convergence identifie en simulation : %.4f rad^-1\n', rho_sim);
+catch
+    fprintf("estimate_decay_rate_from_sim: error \n")
+end
