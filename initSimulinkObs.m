@@ -35,7 +35,7 @@ end
 trajectory = lutData.trajectory;
 
 %% Onduleur et échantillonnage
-Ts = 1e-4 / 10                            % s - période de la commande
+Ts = 1e-4;                           % s - période de la commande
 inverter.vDC  = 300;                    % V - bus continu
 inverter.vMax = inverter.vDC / 2;       % V - tension max
 
@@ -56,47 +56,18 @@ control.kiSpeed = -kMeca(2) * motor.J;
 scenario = struct;
 scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
-scenario.useTrajectory = 1;             % 1 : trajectoire optimale, 0 : courant constant
+scenario.useTrajectory = 0;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
-scenario.SpeedModulate = 0;             % 1: modulation pour estimation de R
 scenario.omegaRef      = 500 * pi / 30; % rad/s - 500 tr/min
 scenario.loadMax       = 5;             % N.m - saturation du couple de charge asservi
 scenario.loadTorque    = 1.7;           % N.m - couple de charge constant (si speedControl = 0)
 scenario.omega0        = scenario.omegaRef;   % rad/s - vitesse initiale
 scenario.theta0        = 0;             % rad - position initiale
 
-% Modulated speed reference trajectory
-t_vec = (0:Ts:scenario.stopTime).';
-if scenario.SpeedModulate == 1
-    epsilon = 0.05;          % Modulation amplitude (5%)
-    nu      = 0.25;          % Non-integer harmonic order
-    theta_e_vec = scenario.theta0 * motor.p + motor.p * scenario.omegaRef * t_vec;
-    scenario.omegaRef_mat = [t_vec,...
-        scenario.omegaRef * (1.0 + epsilon * cos(nu * theta_e_vec))];
-else
-    scenario.omegaRef_mat = [t_vec,...
-        scenario.omegaRef * ones(size(t_vec))];
-end
 
-%% Observateur de flux (Orsolle-Tyberg et al., 2023)
-if scenario.SpeedModulate == 1
-    observer.R         = 1.1 * motor.R;                    % Ohm
-else
-    observer.R         = motor.R;                    % Ohm
-end
-observer.Ln        = (motor.Ld + motor.Lq) / 2;  % H - inductance nominale
-observer.gamma     = 300;                        % gain d'adaptation
-observer.lambda0   = [0 0];                      % Wb - flux alphabeta initial (faux)
-observer.lambdaEq0 = 0.05;                       % Wb - flux équivalent initial (non nul)
-observer.omegaMin  = 1;                          % rad/s - borne de |omega| pour d/dtheta
+%% Estimateur de flux
+regressor.R         = motor.R;                    % Ohm
 math.J = [0 -1; 1 0];                   % rotation de pi/2
-
-%% Observateur de flux (nouveau)
-observer_new.R = observer.R;
-observer_new.harmonics = (-21:2:21);% [-7, -3, -1, 1, 5];
-[observer_new.gamma, rho_theory] = find_optimal_gamma(observer_new.harmonics);
-observer_new.gamma_R = 2.5e-5; % 3
-fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
@@ -105,35 +76,21 @@ out = sim('synRelSimuLutObs');
 toc
 
 %% tracé
-
-fig = plotObs(out.logsout, "lambdadqHat");
-fig.set('Name', 'Observer (Pauline)')
-    
 fig = plotObs(out.logsout, "lambdadq_hat");
-fig.set('Name', 'Observer (new)')
+fig.set('Name', 'Regressor')
 
-if scenario.SpeedModulate == 1
-    fig = plotObs(out.logsout, "lambdadq_hat_extended");
-    fig.set('Name', 'Observer (extended)')
-    
-    figure,
-    subplot(211)
-    delta_R = out.logsout.getElement("delta_R_extended").Values;
-    plot(delta_R.Time, delta_R.Data, delta_R.Time, (motor.R - observer_new.R) * ones(size(delta_R.Time))); 
-    legend("delta R (estim)", "R - obsR")
-    subplot(212)
-    om = out.logsout.getElement("om").Values;
-    plot(om.Time, om.Data, scenario.omegaRef_mat(:,1), scenario.omegaRef_mat(:,2))
-    legend("w", "w ref")
-end
+figure, 
 
-%% taux de convergence
-lambdadq = out.logsout.getElement("lambdadq").Values.Data;
-lambdadq_hat = out.logsout.getElement("lambdadq_hat").Values.Data;
-theta_e = motor.p * out.logsout.getElement("theta").Values.Data;
-try
-    [rho_sim, diag] = estimate_decay_rate_from_sim(lambdadq, lambdadq_hat, theta_e);
-    fprintf('Taux de convergence identifie en simulation : %.4f rad^-1\n', rho_sim);
-catch
-    fprintf("estimate_decay_rate_from_sim: error \n")
-end
+subplot(211)
+z = out.logsout.getElement("z").Values;
+plot(z.Time, z.Data(:, 1))
+legend('z')
+
+subplot(212)
+% lambda_ab_hat = out.logsout.getElement("lambda_ab_hat").Values;
+% plot(lambda_ab_hat.Time, lambda_ab_hat.Data(:, 1))
+% legend('lambda_a_hat')
+lambda_ab_hat_0 = out.logsout.getElement("lambda_ab_hat_0").Values;
+plot(lambda_ab_hat_0.Time, lambda_ab_hat_0.Data(:, 1))
+legend('$\hat \lambda_\alpha 0$', 'Interpreter', 'latex')
+
