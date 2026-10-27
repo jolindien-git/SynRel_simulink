@@ -45,8 +45,8 @@ __MWOPC_PART_BEGIN__ /metadata/coreProperties.xml
   <dcterms:created xsi:type="dcterms:W3CDTF">2022-09-30T08:44:25Z</dcterms:created>
   <dc:creator>promu</dc:creator>
   <cp:lastModifiedBy>peralezADM</cp:lastModifiedBy>
-  <dcterms:modified xsi:type="dcterms:W3CDTF">2026-10-26T17:55:45Z</dcterms:modified>
-  <cp:revision>4.120</cp:revision>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">2026-10-27T08:59:29Z</dcterms:modified>
+  <cp:revision>4.121</cp:revision>
   <cp:version>R2023b</cp:version>
 </cp:coreProperties>
 
@@ -113,7 +113,7 @@ __MWOPC_PART_BEGIN__ /simulink/blockdiagram.xml
     <ConfigManagerSettings>
       <P Name="ModifiedByFormat">%&lt;Auto&gt;</P>
       <P Name="ModifiedDateFormat">%&lt;Auto&gt;</P>
-      <P Name="ModelVersionFormat">%&lt;AutoIncrement:4.120&gt;</P>
+      <P Name="ModelVersionFormat">%&lt;AutoIncrement:4.121&gt;</P>
     </ConfigManagerSettings>
     <EditorSettings>
       <P Name="ShowLineDimensions">on</P>
@@ -1410,97 +1410,96 @@ __MWOPC_PART_BEGIN__ /simulink/stateflow/chart_24.xml
         <P Name="script">function [lambda_dq, lambda_ab, z_out, lambda_ab_0] = flux_observer(vdq, idq, theta_e, omega_e, R, Ts)
 %#codegen
 % Inputs:
-%   vdq        : Stator voltage vector [vd; vq] (V)
-%   idq        : Stator current vector [id; iq] (A)
-%   theta_e    : Electrical angle (rad)
-%   omega_e    : Electrical angular speed (rad/s)
-%   R          : Stator resistance (Ohm)
-%
-% Outputs:
-%   lambda_dq : Estimated flux vector in dq frame (Wb)
-%   lambda_ab : Estimated flux vector in alpha-beta frame (Wb)
-    OMEGA_MIN = 100 * pi / 30; % rad/s
-    
-    persistent theta_buf val_buf idx count last_theta max_samples z
+%   vdq       : Stator voltage vector [vd; vq] (V)
+%   idq       : Stator current vector [id; iq] (A)
+%   theta_e   : Electrical angle (rad)
+%   omega_e   : Electrical angular speed (rad/s)
+%   R         : Stator resistance (Ohm)
+%   Ts        : Sample time (s)
 
+    persistent theta_buf z_buf idx count last_theta max_samples z total_angle
     if isempty(theta_buf)
-        max_samples = 6000;% ceil(2 * pi / (OMEGA_MIN * Ts));
+        % max_samples = 6000;
+        OMEGA_MIN = 100 * pi / 30; % rad/s
+        max_samples = ceil(2 * pi / (OMEGA_MIN * Ts));
         theta_buf = zeros(max_samples, 1);
-        val_buf = zeros(max_samples, 2);
+        z_buf     = zeros(max_samples, 2);
         idx = 1;
         count = 0;
         last_theta = theta_e;
         z = zeros(1, 2);
+        total_angle = 0;
     end
-    mod_idx = @(idx) mod(idx - 1, max_samples) + 1; % /!\  mod(., m) return a value \in [0; m-1]
+    
+    mod_idx = @(i) mod(i - 1, max_samples) + 1;
 
     % Angular increment (forward rotation assumption)
     dtheta = theta_e - last_theta;
     if dtheta &lt; 0
-        dtheta = dtheta + 2*pi;
+        dtheta = dtheta + 2 * pi;
     end
     last_theta = theta_e;
+    total_angle = total_angle + dtheta;
 
-    % Store current samples
-    theta_e_mid = theta_e;% mod(theta_e + 0.5 * Ts * omega_e, 2.0 * pi);
-    cos_mid = cos(theta_e_mid);
-    sin_mid = sin(theta_e_mid);
-    u_alpha = cos_mid * vdq(1) - sin_mid * vdq(2);
-    u_beta  = sin_mid * vdq(1) + cos_mid * vdq(2);
-    i_alpha = cos_mid * idq(1) - sin_mid * idq(2);
-    i_beta  = sin_mid * idq(1) + cos_mid * idq(2);
-    
+    % Back-EMF in stationary frame
+    cos_th = cos(theta_e);
+    sin_th = sin(theta_e);
+    u_alpha = cos_th * vdq(1) - sin_th * vdq(2);
+    u_beta  = sin_th * vdq(1) + cos_th * vdq(2);
+    i_alpha = cos_th * idq(1) - sin_th * idq(2);
+    i_beta  = sin_th * idq(1) + cos_th * idq(2);
+    e_ab    = [u_alpha - R * i_alpha, u_beta - R * i_beta];
+
+    % Pure integration
+    z = z + Ts * e_ab;
+
+    % Store current samples in circular buffer
     theta_buf(idx) = dtheta;
-    val_buf(idx, :) = [u_alpha - R * i_alpha, ...
-                       u_beta  - R * i_beta];
-    z = z + Ts * val_buf(idx, :);
-    
-    idx = mod_idx(idx + 1); 
+    z_buf(idx, :)  = z;
+
+    idx = mod_idx(idx + 1);
     if count &lt; max_samples
         count = count + 1;
     end
 
-    
-    % compute M[z] : accumulate u - Ri (over last turn)
-    M_z = zeros(1, 2);
-    if true%count &gt;= max_samples
+    % Moving average of z over the last electrical turn (2*pi)
+    z_mean = zeros(1, 2);
+    if total_angle &gt;= 2 * pi
         accum_angle = 0;
-        accum_time = 0;
+        accum_time  = 0;
         curr = mod_idx(idx - 1);
         
-        while accum_angle &lt; 2*pi
+        while accum_angle &lt; 2 * pi
             step_theta = theta_buf(curr);
-            val = val_buf(curr, :);
+            val_z      = z_buf(curr, :);
             
-            if (accum_angle + step_theta) &gt;= 2*pi
-                % Linear fraction to complete exactly 2*pi
-                fraction = (2*pi - accum_angle) / step_theta;
-                M_z = M_z + Ts * val * fraction;
-                accum_angle = 2*pi;
-                accum_time = accum_time + Ts * fraction;
+            if (accum_angle + step_theta) &gt;= 2 * pi
+                fraction = (2 * pi - accum_angle) / step_theta;
+                dt = Ts * fraction;
+                z_mean = z_mean + val_z * dt;
+                accum_time = accum_time + dt;
                 break;
             else
-                M_z = M_z + Ts * val;
-                accum_angle = accum_angle + step_theta;
+                z_mean = z_mean + val_z * Ts;
                 accum_time = accum_time + Ts;
+                accum_angle = accum_angle + step_theta;
             end
             
             curr = mod_idx(curr - 1);
         end
-    
-        lambda_ab_0 = -M_z / accum_time;
+        
+        lambda_ab_0 = -z_mean / accum_time;
     else
-        lambda_ab_0 = zeros(1, 2);
+        lambda_ab_0 = -z; % Supprime le transitoire avant la fin du 1er tour
     end
-    
-    % flux
-    z_out = z;    
+
+    % Corrected flux
+    z_out = z;
     lambda_ab = z + lambda_ab_0;
-    
-    cos_th = cos(theta_e);
-    sin_th = sin(theta_e);
-    lambda_dq = [cos_th * lambda_ab(1) + sin_th * lambda_ab(2), ...
-                    -sin_th * lambda_ab(1) + cos_th * lambda_ab(2)];
+
+    % Projection in dq frame
+    lambda_dq = [ cos_th * lambda_ab(1) + sin_th * lambda_ab(2); ...
+                 -sin_th * lambda_ab(1) + cos_th * lambda_ab(2)];
 end</P>
       </eml>
     </state>
