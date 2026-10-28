@@ -75,8 +75,19 @@ fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
+modelName = 'synRelSimuLutObs';
+if bdIsLoaded(modelName)
+    % Vérifie si des modifications non enregistrées sont en cours
+    if strcmp(get_param(modelName, 'Dirty'), 'on')
+        error('Simulink:UnsavedChanges', ...
+              'Le modèle "%s" a été modifié en mémoire. Sauvegardez ou annulez avant le switch.', modelName);
+    end
+    
+    % Fermeture propre du modèle non modifié (0 = sans sauvegarder)
+    close_system(modelName, 0);
+end
 tic
-out = sim('synRelSimuLutObs');
+out = sim(modelName);
 toc
 
 %% tracé
