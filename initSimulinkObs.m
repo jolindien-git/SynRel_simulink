@@ -56,8 +56,12 @@ fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
+modelName = 'synRelSimuLutObs';
+if bdIsLoaded(modelName)
+    open_system(modelName);
+end
 tic
-out = sim('synRelSimuLutObs');
+out = sim(modelName);
 toc
 
 %% tracé
