@@ -35,7 +35,7 @@ end
 trajectory = lutData.trajectory;
 
 %% Onduleur et échantillonnage
-Ts = 1e-4 / 10                            % s - période de la commande
+Ts = 1e-4;% / 10                            % s - période de la commande
 inverter.vDC  = 300;                    % V - bus continu
 inverter.vMax = inverter.vDC / 2;       % V - tension max
 
@@ -56,10 +56,10 @@ control.kiSpeed = -kMeca(2) * motor.J;
 scenario = struct;
 scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
-scenario.useTrajectory = 1;             % 1 : trajectoire optimale, 0 : courant constant
+scenario.useTrajectory = 0;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
-scenario.SpeedModulate = 0;             % 1: modulation pour estimation de R
-scenario.omegaRef      = 500 * pi / 30; % rad/s - 500 tr/min
+scenario.SpeedModulate = 1;             % 1: modulation pour estimation de R
+scenario.omegaRef      = 2*500 * pi / 30; % rad/s - 500 tr/min
 scenario.loadMax       = 5;             % N.m - saturation du couple de charge asservi
 scenario.loadTorque    = 1.7;           % N.m - couple de charge constant (si speedControl = 0)
 scenario.omega0        = scenario.omegaRef;   % rad/s - vitesse initiale
@@ -69,10 +69,22 @@ scenario.theta0        = 0;             % rad - position initiale
 t_vec = (0:Ts:scenario.stopTime).';
 if scenario.SpeedModulate == 1
     epsilon = 0.05;          % Modulation amplitude (5%)
-    nu      = 0.25;          % Non-integer harmonic order
+    nu      = .125;          % Non-integer harmonic order
     theta_e_vec = scenario.theta0 * motor.p + motor.p * scenario.omegaRef * t_vec;
-    scenario.omegaRef_mat = [t_vec,...
-        scenario.omegaRef * (1.0 + epsilon * cos(nu * theta_e_vec))];
+    tf_ramp = 2;
+    ramp = min(scenario.omegaRef, scenario.omegaRef * t_vec / tf_ramp);
+    
+    %-- ondulation
+    omegaRef = scenario.omegaRef * (1.0 + epsilon * cos(nu * theta_e_vec));
+    
+    %-- ramp
+    % omegaRef = ramp;
+    
+    %-- ramp & ondulation
+    % omegaRef = ramp .* (1.0 + epsilon * cos(nu * theta_e_vec));
+    
+    scenario.omegaRef_mat = [t_vec, omegaRef];
+    scenario.omega0 = omegaRef(1);
 else
     scenario.omegaRef_mat = [t_vec,...
         scenario.omegaRef * ones(size(t_vec))];
@@ -95,7 +107,6 @@ math.J = [0 -1; 1 0];                   % rotation de pi/2
 observer_new.R = observer.R;
 observer_new.harmonics = (-21:2:21);% [-7, -3, -1, 1, 5];
 [observer_new.gamma, rho_theory] = find_optimal_gamma(observer_new.harmonics);
-observer_new.gamma_R = 2.5e-5; % 3
 fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
@@ -106,9 +117,9 @@ toc
 
 %% tracé
 
-fig = plotObs(out.logsout, "lambdadqHat");
-fig.set('Name', 'Observer (Pauline)')
-    
+% fig = plotObs(out.logsout, "lambdadqHat");
+% fig.set('Name', 'Observer (Pauline)')
+
 fig = plotObs(out.logsout, "lambdadq_hat");
 fig.set('Name', 'Observer (new)')
 
@@ -117,14 +128,19 @@ if scenario.SpeedModulate == 1
     fig.set('Name', 'Observer (extended)')
     
     figure,
-    subplot(211)
+    subplot(311)
     delta_R = out.logsout.getElement("delta_R_extended").Values;
-    plot(delta_R.Time, delta_R.Data, delta_R.Time, (motor.R - observer_new.R) * ones(size(delta_R.Time))); 
-    legend("delta R (estim)", "R - obsR")
-    subplot(212)
+    plot(delta_R.Time, (motor.R - observer_new.R) * ones(size(delta_R.Time)), ...
+         delta_R.Time, delta_R.Data); 
+    legend("delta R", "delta R (estim)")
+    subplot(312)
     om = out.logsout.getElement("om").Values;
     plot(om.Time, om.Data, scenario.omegaRef_mat(:,1), scenario.omegaRef_mat(:,2))
     legend("w", "w ref")
+    subplot(313)
+    tau = out.logsout.getElement("tau").Values;
+    plot(tau.Time, tau.Data)
+    legend("tau")
 end
 
 %% taux de convergence
