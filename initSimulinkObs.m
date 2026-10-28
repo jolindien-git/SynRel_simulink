@@ -1,23 +1,6 @@
-%INITSIMULINKOBS Initialise, simule et trace le modèle synRelSimuLutObs.slx.
-%   Version autonome du modèle de simulation de la note (SynRel décrit par
-%   cartographies FEMM, commande en courant, charge asservie en vitesse,
-%   observateur de flux à gradient d'Orsolle-Tyberg et al. dans le
-%   sous-système référencé fluxObserver.slx). Mêmes réglages que
-%   ../noteSimulationSetup.m, sans dépendance aux autres dossiers : peut
-%   être exporté pour une version antérieure de MATLAB (exportSimulinkObs).
-%
-%   Fichiers nécessaires dans le même dossier : synRelSimuLutObs.slx,
-%   fluxObserver.slx, synRelSimuLutData.mat, setMotorParameters.m,
-%   polePlacement2ndOrder.m, plotSimulationObs.m.
-%
-%   Variables créées :
-%     motor      - paramètres moteur (setMotorParameters) + cartographies
-%     trajectory - trajectoire de courants optimale
-%     inverter, control, observer, math, Ts - réglages du modèle
-%     scenario   - consignes et durée de simulation (modifiable)
-%     out        - résultat de la simulation (out.logsout : signaux)
-%
-%   See also plotSimulationObs, exportSimulinkObs, setMotorParameters.
+% =====================
+% git: branch main
+% =====================
 
 simulinkFolder = fileparts(mfilename('fullpath'));
 addpath(simulinkFolder);
@@ -59,45 +42,14 @@ scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
 scenario.useTrajectory = 0;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
-scenario.SpeedModulate = 0;             % 1: modulation pour estimation de R
 scenario.omegaRef      = 2*500 * pi / 30; % rad/s - 500 tr/min
 scenario.loadMax       = 5;             % N.m - saturation du couple de charge asservi
 scenario.loadTorque    = 1.7;           % N.m - couple de charge constant (si speedControl = 0)
 scenario.omega0        = scenario.omegaRef;   % rad/s - vitesse initiale
 scenario.theta0        = 0;             % rad - position initiale
 
-% Modulated speed reference trajectory
-t_vec = (0:Ts:scenario.stopTime).';
-if scenario.SpeedModulate == 1
-    epsilon = 0.05;          % Modulation amplitude (5%)
-    nu      = .125;          % Non-integer harmonic order
-    theta_e_vec = scenario.theta0 * motor.p + motor.p * scenario.omegaRef * t_vec;
-    tf_ramp = 2;
-    ramp = min(scenario.omegaRef, scenario.omegaRef * t_vec / tf_ramp);
-    
-    %-- ondulation
-    omegaRef = scenario.omegaRef * (1.0 + epsilon * cos(nu * theta_e_vec));
-    
-    %-- ramp
-    % omegaRef = ramp;
-    
-    %-- ramp & ondulation
-    % omegaRef = ramp .* (1.0 + epsilon * cos(nu * theta_e_vec));
-    
-    scenario.omegaRef_mat = [t_vec, omegaRef];
-    scenario.omega0 = omegaRef(1);
-else
-    scenario.omegaRef_mat = [t_vec,...
-        scenario.omegaRef * ones(size(t_vec))];
-end
-
 %% Observateur de flux (nouveau)
-if scenario.SpeedModulate == 1
-    observer.R         = 1.1 * motor.R;              % Ohm
-else
-    observer.R         = motor.R;                    % Ohm
-end
-observer.R = observer.R;
+observer.R         = motor.R;                    % Ohm
 observer.harmonics = (-21:2:21);% [-7, -3, -1, 1, 5];
 [observer.gamma, rho_theory] = find_optimal_gamma(observer.harmonics);
 fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
@@ -109,29 +61,8 @@ out = sim('synRelSimuLutObs');
 toc
 
 %% tracé
-
 fig = plotObs(out.logsout, "lambdadqHat");
 fig.set('Name', 'Observer (new)')
-
-if scenario.SpeedModulate == 1
-    fig = plotObs(out.logsout, "lambdadq_hat_extended");
-    fig.set('Name', 'Observer (extended)')
-    
-    figure,
-    subplot(311)
-    delta_R = out.logsout.getElement("delta_R_extended").Values;
-    plot(delta_R.Time, (motor.R - observer.R) * ones(size(delta_R.Time)), ...
-         delta_R.Time, delta_R.Data); 
-    legend("delta R", "delta R (estim)")
-    subplot(312)
-    om = out.logsout.getElement("om").Values;
-    plot(om.Time, om.Data, scenario.omegaRef_mat(:,1), scenario.omegaRef_mat(:,2))
-    legend("w", "w ref")
-    subplot(313)
-    tau = out.logsout.getElement("tau").Values;
-    plot(tau.Time, tau.Data)
-    legend("tau")
-end
 
 %% taux de convergence
 lambdadq = out.logsout.getElement("lambdadq").Values.Data;
