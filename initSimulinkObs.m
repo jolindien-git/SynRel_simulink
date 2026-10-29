@@ -3,7 +3,7 @@
 %
 % Objectif: tester l'observateur de flux sur des données du banc
 % =====================
-clearvars; close all; clc;
+clearvars; %close all; clc;
 
 simulinkFolder = fileparts(mfilename('fullpath'));
 addpath(simulinkFolder);
@@ -12,39 +12,48 @@ if ~isfile(fullfile(simulinkFolder, 'setMotorParameters.m')) && isfolder(commonF
     addpath(commonFolder);             % arborescence du projet (hors export)
 end
 
+%% config
+
+
 %% motor
 motor = setMotorParameters();
 
 %% data
 record = load('record_500rpm_id5_iq5.mat').record;
-[dspace, hbk] = deal(record.dspace, record.hbk);
+% traj = record.dspace;
+traj = record.hbk; 
 
-t0 = max(hbk.t(1), dspace.t(1));
-tf = min(hbk.t(end), dspace.t(end)) - t0;
 
-hbk_vdq = timeseries([hbk.vd, hbk.vq], hbk.t - t0);
-hbk_idq = timeseries([hbk.id, hbk.iq], hbk.t - t0);
-hbk_psidq = timeseries([hbk.psid, hbk.psiq], hbk.t - t0);
+t0 = traj.t(1);
+tf = traj.t(end) - t0;
+t_vec = traj.t - t0;
+thetaSynRel = timeseries(unwrap(record.dspace.thetaSynrel), t_vec);
+vab = timeseries([traj.va, traj.vb], t_vec);
+iab = timeseries([traj.ia, traj.ib], t_vec);
+idq = timeseries([traj.id, traj.iq], t_vec);
+psidq = timeseries([traj.psid, traj.psiq], t_vec);
 
-dspace_vdq = timeseries([dspace.vd, dspace.vq], dspace.t - t0);
-dspace_idq = timeseries([dspace.id, dspace.iq], dspace.t - t0);
-dspace_psidq = timeseries([dspace.psid, dspace.psiq], dspace.t - t0);
-
-thetaSynRel = timeseries(dspace.thetaSynrel, dspace.t - t0);
-dth = diff(dspace.thetaSynrel);
-thetaSynRel.Data(2:end) = cumtrapz(mod(dth, 2*pi));%%%%%%%
-speed = mod(dth, 2*pi) ./ diff(dspace.t);
-speed_mean = mean(speed);
+speed = diff(thetaSynRel.Data) ./ diff(traj.t);
+speed = timeseries([speed(1); speed], t_vec);
+speed_mean = mean(speed.Data);
 fprintf("Mean speed %.2f [rpm] \n", speed_mean / pi * 30)
 
+%-- centrer
+% centrer = @(x) x - mean(x);
+% Park = @(a, b, th) [a .* cos(th) + b .* sin(th), ...
+%                        -a .* sin(th) + b .* cos(th)];
+% vab.Data = [centrer(traj.va), centrer(traj.vb)];
+% iab.Data = [centrer(traj.ia), centrer(traj.ib)];
+
+
 %% Scénario de simulation (à modifier librement)
-Ts = 1e-5                            % s - période de la commande
+Ts = 1e-4                            % s - période de la commande
 scenario = struct;
 scenario.stopTime      = tf;             % s
 
-%% Observateur de flux (nouveau)
+%% Observateur de flux
 observer.R         = motor.R;                    % Ohm
-observer.harmonics = (-7:2:9);% [-7, -3, -1, 1, 5];
+observer.harmonics = (-7:2:9);
 [observer.gamma, rho_theory] = find_optimal_gamma(observer.harmonics);
 fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
@@ -59,10 +68,8 @@ out = sim(modelName);
 toc
 
 %% tracé
-fig = plotObs(out.logsout, "dspace_idq", "dspace_lambdadq", "dspace_lambdadqHat");
-fig.set('Name', 'Observer (dspace)')
-fig = plotObs(out.logsout, "hbk_idq", "hbk_lambdadq", "hbk_lambdadqHat");
-fig.set('Name', 'Observer (hbk)')
+fig = plotObs(out.logsout, "idq", "lambdadq", "lambdadqHat");
+fig.set('Name', 'Observer')
 
 %% taux de convergence
 % lambdadq = out.logsout.getElement("lambdadq").Values.Data;

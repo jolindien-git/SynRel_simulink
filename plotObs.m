@@ -7,7 +7,7 @@ lambda_err = lambdadq.Data - lambdadqHat.Data;
 
 fig = figure;
 
-tWindows = {[0, idq.Time(end)], [idq.Time(end) - .1, idq.Time(end)]};
+tWindows = {[0, idq.Time(end)], [idq.Time(end) - 2*.06, idq.Time(end)]};
 for k = 1:2
     tWindow = tWindows{k};
     ax1 = subplot(3, 2, 0 + k);
@@ -27,7 +27,7 @@ for k = 1:2
         lambda_err_norm = vecnorm(lambda_err, 2, 2);
         semilogy(lambdadq.Time, lambda_err_norm)
         legend('$|\lambda_{dq} - \hat \lambda_{dq}|$', 'Interpreter', 'latex');
-        ylim([1e-6, 1])
+        ylim([1e-4, 1])
     else
         plot(lambdadq.Time, lambda_err)
         legend('$\lambda_{dq} - \hat \lambda_{dq}$', 'Interpreter', 'latex');
