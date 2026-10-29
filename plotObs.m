@@ -1,10 +1,7 @@
-function fig = plotObs(logsout, name_idq, name_lambdadq, name_lambdadqHat)
+function fig = plotObs(idq, lambdadq, lambdadqHat)
 
-idq = logsout.getElement(name_idq).Values;
-lambdadq = logsout.getElement(name_lambdadq).Values;
-lambdadqHat = logsout.getElement(name_lambdadqHat).Values;
-lambda_err = lambdadq.Data - lambdadqHat.Data;
-
+lambda_err = timeseries(lambdadq.Data - lambdadqHat.Data, ...
+                        lambdadq.Time);
 fig = figure;
 
 tWindows = {[0, idq.Time(end)], [idq.Time(end) - 2*.06, idq.Time(end)]};
@@ -24,15 +21,27 @@ for k = 1:2
     
     ax3 = subplot(3, 2, 4 + k);
     if k == 1
-        lambda_err_norm = vecnorm(lambda_err, 2, 2);
-        semilogy(lambdadq.Time, lambda_err_norm)
+        lambda_err_norm = vecnorm(lambda_err.Data, 2, 2);
+        semilogy(lambda_err.Time, lambda_err_norm)
         legend('$|\lambda_{dq} - \hat \lambda_{dq}|$', 'Interpreter', 'latex');
         ylim([1e-4, 1])
     else
-        plot(lambdadq.Time, lambda_err)
+        plot(lambda_err.Time, lambda_err.Data)
         legend('$\lambda_{dq} - \hat \lambda_{dq}$', 'Interpreter', 'latex');
     end
     xlim(tWindow); grid on
 
     linkaxes([ax1, ax2, ax3], 'x');
+    
+    %-- print lambda_err stats
+    fprintf("=== Time Window [%.2f s; %.2f s] \n", tWindow)
+    idxs = find(lambda_err.Time > tWindow(1) & lambda_err.Time < tWindow(2));
+    mean_lambda = mean(lambdadq.Data(idxs, :), 1);
+    mean_lambdaHat = mean(lambdadqHat.Data(idxs, :), 1);
+    mean_gap = mean_lambdaHat - mean_lambda;
+    fprintf("Flux (measurement): mean d/q %.3f/%.3f\n", mean_lambda)
+    fprintf("Flux (obs): mean d/q = %.3f/%.3f \n", mean_lambdaHat)
+    fprintf("Mean gap d/q = %.2f/%.2f [mWb]\n", mean_gap*1000)
+    rmse_ripple = rmse(lambdadq.Data(idxs, :) - mean(lambdadq.Data(idxs, :)), lambdadqHat.Data(idxs, :) - mean(lambdadqHat.Data(idxs, :)), 1);
+    fprintf("Ripple rmse d/q = %.2f/%.2f [mWb]\n", rmse_ripple*1000)
 end

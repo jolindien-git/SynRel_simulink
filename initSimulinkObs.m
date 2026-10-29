@@ -12,8 +12,6 @@ if ~isfile(fullfile(simulinkFolder, 'setMotorParameters.m')) && isfolder(commonF
     addpath(commonFolder);             % arborescence du projet (hors export)
 end
 
-%% config
-
 
 %% motor
 motor = setMotorParameters();
@@ -36,13 +34,17 @@ traj = record.hbk;
 % traj.psiq = [traj.psiq; traj.psiq];
 
 
-
 t0 = traj.t(1);
 tf = traj.t(end) - t0;
 t_vec = traj.t - t0;
 thetaSynRel = timeseries(unwrap(record.dspace.thetaSynrel), t_vec);
-vab = timeseries([traj.va, traj.vb], t_vec);
-iab = timeseries([traj.ia, traj.ib], t_vec);
+% vab = timeseries([traj.va, traj.vb], t_vec);
+delta_v_corr = @(i) (9.8 + .121 * abs(i)) .* i ./ sqrt(i.^2 + .652^2);
+% delta_v_corr = @(i) 10 * tanh(i / 0.5);
+v_corr = @(u_dspace, i) u_dspace - delta_v_corr(i);
+vab = timeseries([v_corr(record.dspace.va, record.dspace.ia), v_corr(record.dspace.vb, record.dspace.ib)], t_vec);
+% iab = timeseries([traj.ia, traj.ib], t_vec);
+iab = timeseries([record.dspace.ia, record.dspace.ib], t_vec);
 idq = timeseries([traj.id, traj.iq], t_vec);
 psidq = timeseries([traj.psid, traj.psiq], t_vec);
 
@@ -60,13 +62,13 @@ fprintf("Mean speed %.2f [rpm] \n", speed_mean / pi * 30)
 
 
 %% Scénario de simulation (à modifier librement)
-Ts = 1e-5                            % s - période de la commande
+Ts = 5e-5                            % s - période de la commande
 scenario = struct;
 scenario.stopTime      = tf;             % s
 
 %% Observateur de flux
 observer.R         = motor.R;                    % Ohm
-observer.harmonics = (-7:2:9);
+observer.harmonics =  (-7:2:9);
 [observer.gamma, rho_theory] = find_optimal_gamma(observer.harmonics);
 fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
@@ -81,7 +83,11 @@ out = sim(modelName);
 toc
 
 %% tracé
-fig = plotObs(out.logsout, "idq", "lambdadq", "lambdadqHat");
+idq = out.logsout.getElement("idq").Values;
+lambdadq = out.logsout.getElement("lambdadq").Values;
+lambdadqHat = out.logsout.getElement("lambdadqHat").Values;
+
+fig = plotObs(idq, lambdadq, lambdadqHat);
 fig.set('Name', 'Observer')
 
 %% taux de convergence
