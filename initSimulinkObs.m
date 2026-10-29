@@ -20,8 +20,21 @@ motor = setMotorParameters();
 
 %% data
 record = load('record_500rpm_id5_iq5.mat').record;
-traj = record.dspace;
-% traj = record.hbk; 
+% traj = record.dspace;
+traj = record.hbk; 
+
+%-- répéter trajectoire
+% traj.va = [traj.va; traj.va];
+% traj.vb = [traj.vb; traj.vb];
+% traj.ia = [traj.ia; traj.ia];
+% traj.ib = [traj.ib; traj.ib];
+% traj.t = [traj.t; traj.t(end) + traj.t - traj.t(1) + traj.dt];
+% record.dspace.thetaSynrel = [record.dspace.thetaSynrel;record.dspace.thetaSynrel];
+% traj.id = [traj.id; traj.id];
+% traj.iq = [traj.iq; traj.iq];
+% traj.psid = [traj.psid; traj.psid];
+% traj.psiq = [traj.psiq; traj.psiq];
+
 
 
 t0 = traj.t(1);
@@ -39,11 +52,11 @@ speed_mean = mean(speed.Data);
 fprintf("Mean speed %.2f [rpm] \n", speed_mean / pi * 30)
 
 %-- centrer
-centrer = @(x) x - mean(x);
-Park = @(a, b, th) [a .* cos(th) + b .* sin(th), ...
-                       -a .* sin(th) + b .* cos(th)];
-vab.Data = [centrer(traj.va), centrer(traj.vb)];
-iab.Data = [centrer(traj.ia), centrer(traj.ib)];
+% centrer = @(x) x - mean(x);
+% Park = @(a, b, th) [a .* cos(th) + b .* sin(th), ...
+%                        -a .* sin(th) + b .* cos(th)];
+% vab.Data = [centrer(traj.va), centrer(traj.vb)];
+% iab.Data = [centrer(traj.ia), centrer(traj.ib)];
 
 
 %% Scénario de simulation (à modifier librement)
