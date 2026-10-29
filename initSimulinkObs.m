@@ -20,8 +20,8 @@ motor = setMotorParameters();
 
 %% data
 record = load('record_500rpm_id5_iq5.mat').record;
-% traj = record.dspace;
-traj = record.hbk; 
+traj = record.dspace;
+% traj = record.hbk; 
 
 
 t0 = traj.t(1);
@@ -39,15 +39,15 @@ speed_mean = mean(speed.Data);
 fprintf("Mean speed %.2f [rpm] \n", speed_mean / pi * 30)
 
 %-- centrer
-% centrer = @(x) x - mean(x);
-% Park = @(a, b, th) [a .* cos(th) + b .* sin(th), ...
-%                        -a .* sin(th) + b .* cos(th)];
-% vab.Data = [centrer(traj.va), centrer(traj.vb)];
-% iab.Data = [centrer(traj.ia), centrer(traj.ib)];
+centrer = @(x) x - mean(x);
+Park = @(a, b, th) [a .* cos(th) + b .* sin(th), ...
+                       -a .* sin(th) + b .* cos(th)];
+vab.Data = [centrer(traj.va), centrer(traj.vb)];
+iab.Data = [centrer(traj.ia), centrer(traj.ib)];
 
 
 %% Scénario de simulation (à modifier librement)
-Ts = 1e-4                            % s - période de la commande
+Ts = 1e-5                            % s - période de la commande
 scenario = struct;
 scenario.stopTime      = tf;             % s
 
@@ -60,9 +60,9 @@ fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
 modelName = 'synRelSimuLutObs';
-if bdIsLoaded(modelName)
-    open_system(modelName);
-end
+% if bdIsLoaded(modelName)
+%     open_system(modelName);
+% end
 tic
 out = sim(modelName);
 toc
