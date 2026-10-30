@@ -1,7 +1,11 @@
 % =====================
 % git: branch bench_data
 %
-% Objectif: tester l'observateur de flux sur des données du banc
+% Objectifs: 
+%   tester l'observateur de flux sur des données du banc
+%   évaluer l'amélioration quand offset de u-Ri est estimé 
+%       amélioration importante pour problem=3 (mesures HBK) et n_repeat >= 3
+%       A VOIR: pas de facteur d'oubli dans estim offset -> problème si cet offset change 
 % =====================
 clearvars; close all;
 
@@ -18,30 +22,72 @@ record = load('record_500rpm_id5_iq5.mat').record;
 [hbk, dspace] = deal(record.hbk, record.dspace);
 
 %-- repeat signals (longer trajectories)
-n_repeat = 0;
+n_repeat = 3;
 [hbk, dspace] = deal(repeat_data(hbk, n_repeat), repeat_data(dspace, n_repeat));
 
-%-- correction: estimate hbk voltage from dspace signals
-delta_v_corr = @(i) (9.8 + .121 * abs(i)) .* i ./ sqrt(i.^2 + .652^2);
-v_corr = @(u_dspace, i) u_dspace - delta_v_corr(i);
+problem = 1; % le problem 3 (à partir des mesures HBK qui est le + amélioré par offset: c'est là où il est le plus grand)
+if problem == 1
+    fprintf("*** PROBLEM: Estimate HBK flux from DSPACE signals \n")
+    %-- correction: estimate hbk voltage from dspace signals
+    delta_v_corr = @(i) (9.8 + .121 * abs(i)) .* i ./ sqrt(i.^2 + .652^2);
+    v_corr = @(u_dspace, i) u_dspace - delta_v_corr(i);
 
-%-- inputs of observer = iab, vab (corrected), theta, speed
-inputs = struct;
-t_vec = dspace.t - dspace.t(1);
-inputs.iab = timeseries([dspace.ia, dspace.ib], ...
-                        t_vec);
-inputs.vab = timeseries([v_corr(dspace.va, dspace.ia), v_corr(dspace.vb, dspace.ib)], ...
-                        t_vec);
-inputs.vab.Data(2:end) = inputs.vab.Data(1:end-1); % delayed by one step
-inputs.thetaSynRel = timeseries(unwrap(dspace.thetaSynrel), ...
-                                t_vec);
-speed = diff(inputs.thetaSynRel.Data) ./ diff(inputs.thetaSynRel.Time);
-inputs.speed = timeseries([speed(1); speed], ...
-                          t_vec);
-%--
-idq = timeseries([dspace.id, dspace.iq], t_vec);
-psidq = timeseries([hbk.psid, hbk.psiq], t_vec);
-fprintf("Mean speed %.2f [rpm] \n", mean(inputs.speed.Data) / pi * 30)
+    %-- inputs of observer = iab, vab (corrected), theta, speed
+    inputs = struct;
+    t_vec = dspace.t - dspace.t(1);
+    inputs.iab = timeseries([dspace.ia, dspace.ib], ...
+                            t_vec);
+    inputs.vab = timeseries([v_corr(dspace.va, dspace.ia), v_corr(dspace.vb, dspace.ib)], ...
+                            t_vec);
+    inputs.vab.Data(2:end) = inputs.vab.Data(1:end-1); % delayed by one step
+    inputs.thetaSynRel = timeseries(unwrap(dspace.thetaSynrel), ...
+                                    t_vec);
+    speed = diff(inputs.thetaSynRel.Data) ./ diff(inputs.thetaSynRel.Time);
+    inputs.speed = timeseries([speed(1); speed], ...
+                              t_vec);
+    %-- outputs (only used for comparison)
+    idq = timeseries([dspace.id, dspace.iq], t_vec);
+    psidq = timeseries([hbk.psid, hbk.psiq], t_vec);
+    fprintf("Mean speed %.2f [rpm] \n", mean(inputs.speed.Data) / pi * 30)
+    
+elseif problem == 2
+    fprintf("*** PROBLEM: Estimate DSPACE flux from DSPACE signals \n")
+    %-- inputs of observer = iab, vab, theta, speed
+    inputs = struct;
+    t_vec = dspace.t - dspace.t(1);
+    inputs.iab = timeseries([dspace.ia, dspace.ib], ...
+                            t_vec);
+    inputs.vab = timeseries([dspace.va, dspace.vb], ...
+                            t_vec);
+    inputs.thetaSynRel = timeseries(unwrap(dspace.thetaSynrel), ...
+                                    t_vec);
+    speed = diff(inputs.thetaSynRel.Data) ./ diff(inputs.thetaSynRel.Time);
+    inputs.speed = timeseries([speed(1); speed], ...
+                              t_vec);
+    %-- outputs (only used for comparison)
+    idq = timeseries([dspace.id, dspace.iq], t_vec);
+    psidq = timeseries([dspace.psid, dspace.psiq], t_vec);
+    fprintf("Mean speed %.2f [rpm] \n", mean(inputs.speed.Data) / pi * 30)
+else
+    fprintf("*** PROBLEM: Estimate HBK flux from HBK measurements \n")
+    %-- inputs of observer = iab, vab, theta, speed
+    inputs = struct;
+    t_vec = hbk.t - hbk.t(1);
+    inputs.iab = timeseries([hbk.ia, hbk.ib], ...
+                            t_vec);
+    inputs.vab = timeseries([hbk.va, hbk.vb], ...
+                            t_vec);
+    inputs.thetaSynRel = timeseries(unwrap(dspace.thetaSynrel), ... % (thetaSynrel only available in DSPACE)
+                                    t_vec);
+    speed = diff(inputs.thetaSynRel.Data) ./ diff(inputs.thetaSynRel.Time);
+    inputs.speed = timeseries([speed(1); speed], ...
+                              t_vec);
+    %-- outputs (only used for comparison)
+    idq = timeseries([hbk.id, hbk.iq], t_vec);
+    psidq = timeseries([hbk.psid, hbk.psiq], t_vec);
+    fprintf("Mean speed %.2f [rpm] \n", mean(inputs.speed.Data) / pi * 30)
+end
+
 
 %% motor
 motor = setMotorParameters();
