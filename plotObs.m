@@ -1,10 +1,13 @@
-function fig = plotObs(idq, lambdadq, lambdadqHat)
+function fig = plotObs(theta_m, idq, lambdadq, lambdadqHat)
 
 lambda_err = timeseries(lambdadq.Data - lambdadqHat.Data, ...
                         lambdadq.Time);
-fig = figure;
+%-- looking for last mechanical turn
+idxs = find(theta_m.Data > theta_m.Data(end) - 2 * pi);
+tWindow = [theta_m.Time(idxs(1)), theta_m.Time(end)];
 
-tWindows = {[0, idq.Time(end)], [idq.Time(end) - 2*.06, idq.Time(end)]};
+fig = figure;
+tWindows = {[0, idq.Time(end)], tWindow};
 for k = 1:2
     tWindow = tWindows{k};
     ax1 = subplot(3, 2, 0 + k);
@@ -34,14 +37,16 @@ for k = 1:2
     linkaxes([ax1, ax2, ax3], 'x');
     
     %-- print lambda_err stats
-    fprintf("=== Time Window [%.2f s; %.2f s] \n", tWindow)
-    idxs = find(lambda_err.Time > tWindow(1) & lambda_err.Time < tWindow(2));
-    mean_lambda = mean(lambdadq.Data(idxs, :), 1);
-    mean_lambdaHat = mean(lambdadqHat.Data(idxs, :), 1);
-    mean_gap = mean_lambdaHat - mean_lambda;
-    fprintf("Flux (measurement): mean d/q %.3f/%.3f\n", mean_lambda)
-    fprintf("Flux (obs): mean d/q = %.3f/%.3f \n", mean_lambdaHat)
-    fprintf("Mean gap d/q = %.2f/%.2f [mWb]\n", mean_gap*1000)
-    rmse_ripple = rmse(lambdadq.Data(idxs, :) - mean(lambdadq.Data(idxs, :)), lambdadqHat.Data(idxs, :) - mean(lambdadqHat.Data(idxs, :)), 1);
-    fprintf("Ripple rmse d/q = %.2f/%.2f [mWb]\n", rmse_ripple*1000)
+    if k == 2
+        fprintf("=== Time Window [%.2f s; %.2f s] \n", tWindow)
+        idxs = find(lambda_err.Time > tWindow(1) & lambda_err.Time < tWindow(2));
+        mean_lambda = mean(lambdadq.Data(idxs, :), 1);
+        mean_lambdaHat = mean(lambdadqHat.Data(idxs, :), 1);
+        mean_gap = mean_lambdaHat - mean_lambda;
+        fprintf("Flux (measurement): mean d/q %.3f/%.3f\n", mean_lambda)
+        fprintf("Flux (obs): mean d/q = %.3f/%.3f \n", mean_lambdaHat)
+        fprintf("Mean gap d/q = %.2f/%.2f [mWb]\n", mean_gap*1000)
+        rmse_ripple = rmse(lambdadq.Data(idxs, :) - mean(lambdadq.Data(idxs, :)), lambdadqHat.Data(idxs, :) - mean(lambdadqHat.Data(idxs, :)), 1);
+        fprintf("Ripple rmse d/q = %.2f/%.2f [mWb]\n", rmse_ripple*1000)
+    end
 end

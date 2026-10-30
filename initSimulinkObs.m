@@ -3,7 +3,7 @@
 %
 % Objectif: tester l'observateur de flux sur des données du banc
 % =====================
-clearvars; %close all; clc;
+clearvars; close all;
 
 simulinkFolder = fileparts(mfilename('fullpath'));
 addpath(simulinkFolder);
@@ -12,65 +12,49 @@ if ~isfile(fullfile(simulinkFolder, 'setMotorParameters.m')) && isfolder(commonF
     addpath(commonFolder);             % arborescence du projet (hors export)
 end
 
+%% load data
+%-- read file
+record = load('record_500rpm_id5_iq5.mat').record;
+[hbk, dspace] = deal(record.hbk, record.dspace);
+
+%-- repeat signals (longer trajectories)
+n_repeat = 0;
+[hbk, dspace] = deal(repeat_data(hbk, n_repeat), repeat_data(dspace, n_repeat));
+
+%-- correction: estimate hbk voltage from dspace signals
+delta_v_corr = @(i) (9.8 + .121 * abs(i)) .* i ./ sqrt(i.^2 + .652^2);
+v_corr = @(u_dspace, i) u_dspace - delta_v_corr(i);
+
+%-- inputs of observer = iab, vab (corrected), theta, speed
+inputs = struct;
+t_vec = dspace.t - dspace.t(1);
+inputs.iab = timeseries([dspace.ia, dspace.ib], ...
+                        t_vec);
+inputs.vab = timeseries([v_corr(dspace.va, dspace.ia), v_corr(dspace.vb, dspace.ib)], ...
+                        t_vec);
+inputs.vab.Data(2:end) = inputs.vab.Data(1:end-1); % delayed by one step
+inputs.thetaSynRel = timeseries(unwrap(dspace.thetaSynrel), ...
+                                t_vec);
+speed = diff(inputs.thetaSynRel.Data) ./ diff(inputs.thetaSynRel.Time);
+inputs.speed = timeseries([speed(1); speed], ...
+                          t_vec);
+%--
+idq = timeseries([dspace.id, dspace.iq], t_vec);
+psidq = timeseries([hbk.psid, hbk.psiq], t_vec);
+fprintf("Mean speed %.2f [rpm] \n", mean(inputs.speed.Data) / pi * 30)
 
 %% motor
 motor = setMotorParameters();
 
-%% data
-record = load('record_500rpm_id5_iq5.mat').record;
-% traj = record.dspace;
-traj = record.hbk; 
-
-%-- répéter trajectoire
-% traj.va = [traj.va; traj.va];
-% traj.vb = [traj.vb; traj.vb];
-% traj.ia = [traj.ia; traj.ia];
-% traj.ib = [traj.ib; traj.ib];
-% traj.t = [traj.t; traj.t(end) + traj.t - traj.t(1) + traj.dt];
-% record.dspace.thetaSynrel = [record.dspace.thetaSynrel;record.dspace.thetaSynrel];
-% traj.id = [traj.id; traj.id];
-% traj.iq = [traj.iq; traj.iq];
-% traj.psid = [traj.psid; traj.psid];
-% traj.psiq = [traj.psiq; traj.psiq];
-
-
-t0 = traj.t(1);
-tf = traj.t(end) - t0;
-t_vec = traj.t - t0;
-thetaSynRel = timeseries(unwrap(record.dspace.thetaSynrel), t_vec);
-% vab = timeseries([traj.va, traj.vb], t_vec);
-delta_v_corr = @(i) (9.8 + .121 * abs(i)) .* i ./ sqrt(i.^2 + .652^2);
-% delta_v_corr = @(i) 10 * tanh(i / 0.5);
-v_corr = @(u_dspace, i) u_dspace - delta_v_corr(i);
-vab = timeseries([v_corr(record.dspace.va, record.dspace.ia), v_corr(record.dspace.vb, record.dspace.ib)], t_vec);
-% iab = timeseries([traj.ia, traj.ib], t_vec);
-iab = timeseries([record.dspace.ia, record.dspace.ib], t_vec);
-idq = timeseries([traj.id, traj.iq], t_vec);
-psidq = timeseries([traj.psid, traj.psiq], t_vec);
-
-speed = diff(thetaSynRel.Data) ./ diff(traj.t);
-speed = timeseries([speed(1); speed], t_vec);
-speed_mean = mean(speed.Data);
-fprintf("Mean speed %.2f [rpm] \n", speed_mean / pi * 30)
-
-%-- centrer
-% centrer = @(x) x - mean(x);
-% Park = @(a, b, th) [a .* cos(th) + b .* sin(th), ...
-%                        -a .* sin(th) + b .* cos(th)];
-% vab.Data = [centrer(traj.va), centrer(traj.vb)];
-% iab.Data = [centrer(traj.ia), centrer(traj.ib)];
-
-
-%% Scénario de simulation (à modifier librement)
-Ts = 5e-5                            % s - période de la commande
+%% Config Simulink
+Ts = 5e-5;                               % s - période simulink
 scenario = struct;
-scenario.stopTime      = tf;             % s
+scenario.stopTime      = t_vec(end);     % s
 
 %% Observateur de flux
 observer.R         = motor.R;                    % Ohm
 observer.harmonics =  (-7:2:9);
 [observer.gamma, rho_theory] = find_optimal_gamma(observer.harmonics);
-fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
@@ -82,21 +66,45 @@ tic
 out = sim(modelName);
 toc
 
-%% tracé
+%% tracés
+
+%-- read Simulink outputs
 idq = out.logsout.getElement("idq").Values;
 lambdadq = out.logsout.getElement("lambdadq").Values;
 lambdadqHat = out.logsout.getElement("lambdadqHat").Values;
+lambdadqHat_offset = out.logsout.getElement("lambdadqHat_offset").Values;
+offsetabHat = out.logsout.getElement("offsetabHat").Values;
+theta_e = out.logsout.getElement("thetaElec").Values;
+theta_m = timeseries(theta_e.Data / motor.p, theta_e.Time);
 
-fig = plotObs(idq, lambdadq, lambdadqHat);
+%-- plot observer results
+fprintf("\n ========= without offset ======== \n")
+fig = plotObs(theta_m, idq, lambdadq, lambdadqHat);
 fig.set('Name', 'Observer')
 
+fprintf("\n ========= with offset ======== \n")
+fig = plotObs(theta_m, idq, lambdadq, lambdadqHat_offset);
+fig.set('Name', 'Observer (offset)')
+
+%-- offset estimate convergence
+offset_ab = mean(inputs.vab - motor.R * inputs.iab);
+figure
+subplot(211)
+plot(offsetabHat.Time, offset_ab(1) * ones(numel(offsetabHat.Time), 1), '--', ...
+     offsetabHat.Time, offsetabHat.Data(:, 1))
+legend('mean$(v_\alpha - R i_\alpha)$', 'estim', 'Interpreter', 'latex')
+subplot(212)
+plot(offsetabHat.Time, offset_ab(2) * ones(numel(offsetabHat.Time), 1), '--', ...
+     offsetabHat.Time, offsetabHat.Data(:, 2))
+legend('mean$(v_\beta - R i_\beta)$', 'estim', 'Interpreter', 'latex')
+
+
 %% taux de convergence
-% lambdadq = out.logsout.getElement("lambdadq").Values.Data;
-% lambdadqHat = out.logsout.getElement("lambdadqHat").Values.Data;
-% theta_e = motor.p * out.logsout.getElement("theta").Values.Data;
-% try
-%     [rho_sim, diag] = estimate_decay_rate_from_sim(lambdadq, lambdadqHat, theta_e);
-%     fprintf('Taux de convergence identifie en simulation : %.4f rad^-1\n', rho_sim);
-% catch
-%     fprintf("estimate_decay_rate_from_sim: error \n")
-% end
+fprintf('Taux de convergence (theorique) : %.4f rad^-1\n', rho_theory);
+
+try
+    [rho_sim, diag] = estimate_decay_rate_from_sim(lambdadq.Data, lambdadqHat.Data, theta_e.Data);
+    fprintf('Taux de convergence identifie en simulation : %.4f rad^-1\n', rho_sim);
+catch
+    fprintf("estimate_decay_rate_from_sim: error \n")
+end
