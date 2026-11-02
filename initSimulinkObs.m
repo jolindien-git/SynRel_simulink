@@ -40,7 +40,7 @@ control.kiSpeed = -kMeca(2) * motor.J;
 scenario = struct;
 scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
-scenario.useTrajectory = 0;             % 1 : trajectoire optimale, 0 : courant constant
+scenario.useTrajectory = 1;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
 scenario.omegaRef      = 2*500 * pi / 30; % rad/s - 500 tr/min
 scenario.loadMax       = 5;             % N.m - saturation du couple de charge asservi
@@ -65,8 +65,18 @@ out = sim(modelName);
 toc
 
 %% tracé
+
 fig = plotObs(out.logsout, "lambdadqHat");
 fig.set('Name', 'Observer (new)')
+
+%-- couple
+tau = out.logsout.getElement("tau").Values;
+tauHat = out.logsout.getElement("tauHat").Values;
+figure,
+plot(tau.Time, tau.Data, ...
+    tauHat.Time, tauHat.Data)
+legend('$\tau$', '$\hat \tau$', 'Interpreter', 'latex')
+xlim([tau.Time(end) - .1, tau.Time(end)]);
 
 %% taux de convergence
 lambdadq = out.logsout.getElement("lambdadq").Values.Data;
