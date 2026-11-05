@@ -42,7 +42,7 @@ scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
 scenario.useTrajectory = 1;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
-scenario.omegaRef      = 2*500 * pi / 30; % rad/s - 500 tr/min
+scenario.omegaRef      = 500 * pi / 30; % rad/s - 500 tr/min
 scenario.loadMax       = 5;             % N.m - saturation du couple de charge asservi
 scenario.loadTorque    = 1.7;           % N.m - couple de charge constant (si speedControl = 0)
 scenario.omega0        = scenario.omegaRef;   % rad/s - vitesse initiale
