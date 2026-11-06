@@ -19,7 +19,7 @@ trajectory = lutData.trajectory;
 math.J = [0 -1; 1 0];                   % rotation de pi/2
 
 %% Onduleur et échantillonnage
-Ts = 1e-4;% / 10                            % s - période de la commande
+Ts = 1e-4;                            % s - période de la commande
 inverter.vDC  = 300;                    % V - bus continu
 inverter.vMax = inverter.vDC / 2;       % V - tension max
 
@@ -40,7 +40,7 @@ control.kiSpeed = -kMeca(2) * motor.J;
 scenario = struct;
 scenario.stopTime      = 3;             % s
 scenario.tauRef        = 2;             % N.m - couple de référence
-scenario.useTrajectory = 1;             % 1 : trajectoire optimale, 0 : courant constant
+scenario.useTrajectory = 0;             % 1 : trajectoire optimale, 0 : courant constant
 scenario.speedControl  = 1;             % 1 : charge asservie en vitesse
 scenario.omegaRef      = 500 * pi / 30; % rad/s - 500 tr/min
 scenario.loadMax       = 5;             % N.m - saturation du couple de charge asservi
@@ -50,16 +50,16 @@ scenario.theta0        = 0;             % rad - position initiale
 
 %% Observateur de flux (nouveau)
 observer.R         = motor.R;                    % Ohm
-observer.harmonics = (-21:2:21);% [-7, -3, -1, 1, 5];
+observer.harmonics = -7:2:5;% (-21:2:21);%
 [observer.gamma, rho_theory] = find_optimal_gamma(observer.harmonics);
 fprintf('Taux de convergence (theoritical) : %.4f rad^-1\n', rho_theory);
 
 %% Simulation
 clear simulinkFolder commonFolder lutData lutName kElec kMeca
 modelName = 'synRelSimuLutObs';
-if bdIsLoaded(modelName)
-    open_system(modelName);
-end
+% if bdIsLoaded(modelName)
+%     open_system(modelName);
+% end
 tic
 out = sim(modelName);
 toc
@@ -77,6 +77,14 @@ plot(tau.Time, tau.Data, ...
     tauHat.Time, tauHat.Data)
 legend('$\tau$', '$\hat \tau$', 'Interpreter', 'latex')
 xlim([tau.Time(end) - .1, tau.Time(end)]);
+ylim([-2, 4])
+
+%-- error current
+% idqr = out.logsout.getElement("idqr").Values;
+% idq = out.logsout.getElement("idq").Values;
+% err = idq-idqr; 
+% figure, 
+% plot(err.Time(100:end), err.Data(100:end, :))
 
 %% taux de convergence
 lambdadq = out.logsout.getElement("lambdadq").Values.Data;
