@@ -6,7 +6,7 @@ lambdadqHat = logsout.getElement(name).Values;
 lambda_err = lambdadq.Data - lambdadqHat.Data;
 
 fig = figure;
-tWindows = {[0, 1], [idq.Time(end) - .1, idq.Time(end)]};
+tWindows = {[0, idq.Time(end)], [idq.Time(end) - .1, idq.Time(end)]};
 for k = 1:2
     tWindow = tWindows{k};
     subplot(3, 2, 0 + k)
